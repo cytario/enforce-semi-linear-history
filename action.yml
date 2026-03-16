@@ -1,0 +1,47 @@
+name: Enforce Semi-Linear History
+description: >
+  Ensures a pull request branch has no merge commits and is rebased on top of
+  the base branch, enforcing a semi-linear (rebase) workflow.
+
+inputs:
+  base_ref:
+    description: >
+      The base branch to check against (e.g. "main"). Defaults to the
+      pull_request base_ref when running in a pull_request event.
+    required: false
+    default: ${{ github.base_ref }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate event context
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.base_ref }}" ]; then
+          echo "::error::base_ref input is required when not running in a pull_request event."
+          exit 1
+        fi
+
+    - name: Fetch base branch
+      shell: bash
+      run: git fetch origin ${{ inputs.base_ref }}
+
+    - name: Ensure branch has no merge commits
+      shell: bash
+      run: |
+        MERGE_COMMITS=$(git log --merges origin/${{ inputs.base_ref }}..HEAD --oneline)
+        if [ -n "$MERGE_COMMITS" ]; then
+          echo "::error::Branch contains merge commits. Please rebase onto ${{ inputs.base_ref }} instead."
+          echo "$MERGE_COMMITS"
+          exit 1
+        fi
+        echo "No merge commits found."
+
+    - name: Ensure branch is rebased on top of base branch
+      shell: bash
+      run: |
+        if ! git merge-base --is-ancestor origin/${{ inputs.base_ref }} HEAD; then
+          echo "::error::Branch is not up to date with ${{ inputs.base_ref }}. Please rebase."
+          exit 1
+        fi
+        echo "Branch is up to date with ${{ inputs.base_ref }}."
